@@ -179,7 +179,7 @@ const [payAmount, setPayAmount] = useState("");
               </div>
 
               <div className="button-wrap">
-                {Number(payAmount)<=Number(currentPayBalance) ?(<button type="button" className="normal" disabled={false} onClick={() => handleSwap()}>
+                {Number(payAmount)<=Number(currentPayBalance) && receiveCurrency && Number(payAmount) != 0 ?(<button type="button" className="normal" disabled={false} onClick={() => handleSwap()}>
                   Swap
                 </button>
               ):(
