@@ -1,36 +1,104 @@
 import './style/index.scss';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TokenSelector } from './component/TokenSelector';
 import { ResultTokenSelector } from './component/ResultTokenSelector';
-import balanceData from './balance.json';
-import valueData from './value.json';
-
-
-type Currency = keyof typeof balanceData.balances;
-
-
-
+//Calling currency info
+import currencyData from './currency.json';
+type Currency = keyof typeof currencyData.currencies;
 
 const Main: React.FC = () => {
+
+//Dropdown menu opening functions________________________________________________________________________
   const [isTokenSelectorOpen, setIsTokenSelectorOpen] = useState(false);
   const [isReceiveTokenSelectorOpen, setIsReceiveTokenSelectorOpen] = useState(false);
-
+//Dropdown menu closing functions
   const toggleTokenSelectorOpen = () => setIsTokenSelectorOpen(!isTokenSelectorOpen);
   const toggleReceiveTokenSelectorOpen = () => setIsReceiveTokenSelectorOpen(!isReceiveTokenSelectorOpen);
 
+//Setting up "You pay" and "You receive" currencies______________________________________________________
   const [payCurrency, setPayCurrency] = useState<Currency>('CTC');
-  const [receiveCurrency, setReceiveCurrency] = useState<Currency>('CTC');
+  const [receiveCurrency, setReceiveCurrency] = useState<Currency | null>(null);
 
-  const payBalance = balanceData.balances[payCurrency];
-  const receiveBalance = balanceData.balances[receiveCurrency];
+//Fetchnig user balance information (API 1)________________________________________________________________________
+  const [payBalance, setPayBalance] = useState<Record<string, string> | null>(null);
+  useEffect(() => {
+  fetch("https://inhousedashboard-test-app.azurewebsites.net/api/Interview/get-balance")
+    .then(res => res.json())
+    .then(data => setPayBalance(data))
+    .catch(err => console.error(err));
+}, []);
+  const currentPayBalance = payBalance ? payBalance[payCurrency] : 0;  
 
-  const [payAmount, setPayAmount] = useState("");
+  const [receiveBalance, setReceiveBalance] = useState<Record<string, string> | null>(null);
+  useEffect(() => {
+  fetch("https://inhousedashboard-test-app.azurewebsites.net/api/Interview/get-balance")
+    .then(res => res.json())
+    .then(data => setReceiveBalance(data))
+    .catch(err => console.error(err));
+}, []);
+const currentReceiveBalance = receiveBalance && receiveCurrency ? receiveBalance[receiveCurrency]: 0;
 
+//Fetching currency value (API 2)________________________________________________________________________
+  const [payCurrencyValue, setPayCurrencyValue] = useState<Record<string, string> | null>(null);
+  useEffect(() => {
+    fetch("https://inhousedashboard-test-app.azurewebsites.net/api/Interview/get-price")
+      .then(res => res.json())
+      .then(data => setPayCurrencyValue(data))
+      .catch(err => console.error(err));
+  }, []);  
+  const currentPayCurrencyValue = payCurrencyValue ? payCurrencyValue[payCurrency] : 0;
 
-  const payCurrencyValue = valueData.values[payCurrency];
-  const receiveCurrencyValue = valueData.values[receiveCurrency];
+  const [receiveCurrencyValue, setReceiveCurrencyValue] = useState<Record<string, string> | null>(null);
+  useEffect(() => {
+    fetch("https://inhousedashboard-test-app.azurewebsites.net/api/Interview/get-price")
+      .then(res => res.json())
+      .then(data => setReceiveCurrencyValue(data))
+      .catch(err => console.error(err));
+  }, []);  
+  const currentReceiveCurrencyValue = receiveCurrencyValue && receiveCurrency ? receiveCurrencyValue[receiveCurrency]: 0;
 
-  const receiveAmount = Number(payAmount) * (Number(payCurrencyValue) / Number(receiveCurrencyValue));
+//Posting API 3_____________________________________________________________________________________________
+  const handleSwap = async () => {
+  try {
+    const res = await fetch(
+      "https://inhousedashboard-test-app.azurewebsites.net/api/Interview/post-swap",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payCurrency,                 // e.g. "CTC"
+          receiveCurrency,             // e.g. "USDC"  (must NOT be null)
+          amount: Number(payAmount),   // number
+        }),
+      }
+    ); if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`post-swap failed ${res.status} ${text}`);
+    }
+    const data = await res.json().catch(() => ({}));
+    console.log("swap success:", data);
+
+    setPayAmount("");
+  } catch (err) {
+    console.error("swap error:", err);
+  }
+}; 
+const [payAmount, setPayAmount] = useState("");
+
+//Calculating amount received________________________________________________________________________
+  const receiveAmount =
+  receiveCurrencyValue
+    ? Number(payAmount) * (Number(currentPayCurrencyValue) / Number(currentReceiveCurrencyValue))
+    : 0;
+
+//Function for swap button________________________________________________________________________
+  const swapCurrencies = () => {
+    if (!receiveCurrency) return;
+    console.log("swapped")
+    setPayCurrency(receiveCurrency);
+    setReceiveCurrency(payCurrency);
+    setPayAmount(String(receiveAmount));
+  };
 
 
 
@@ -69,13 +137,13 @@ const Main: React.FC = () => {
                   </div>
                   <div className="rt">
                     <div className="balance">
-                      <span>Balance: {payBalance}</span>
+                      <span>Balance: {currentPayBalance}</span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <button type="button" className="mark" onClick={() => { }}>
+              <button type="button" className="mark" onClick={() => swapCurrencies()}>
                 <i className="blind">swap</i>
               </button>
 
@@ -86,33 +154,39 @@ const Main: React.FC = () => {
 
                 <div className="amount-input">
                   <div className="input">
-                    <span className="amount-value"> {receiveAmount || 0} </span>
+                    {receiveCurrency ? (<span className="amount-value"> {receiveAmount || 0} </span>):(<span className="amount-value"> Select Token </span>)}
+                    
                   </div>
-                  <button type="button" className="currency-label select" onClick={toggleReceiveTokenSelectorOpen}>
-                    <div className={`token ${String(receiveCurrency)}`} data-token-size="28"></div>
-                    <strong className="name">{String(receiveCurrency)}</strong>
-                  </button>
+                  {receiveCurrency ? (
+                    <button type="button" className="currency-label select" onClick={toggleReceiveTokenSelectorOpen}>
+                      <div className={`token ${receiveCurrency}`} data-token-size="28"></div>
+                      <strong className="name">{receiveCurrency}</strong>
+                    </button>
+                  ) : (
+                    <button type="button" className="currency-label select" onClick={toggleReceiveTokenSelectorOpen}>
+                      Select token
+                    </button>
+                  )}
                 </div>
 
                 <div className="item-flex amount">
                   <div className="rt">
                     <div className="balance">
-                      <span>Current Balance: {receiveBalance}</span>
+                      <span>Balance: {currentReceiveBalance}</span>
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="button-wrap">
-                <button type="button" className="normal" disabled={true} onClick={() => { }}>
+                {Number(payAmount)<Number(currentPayBalance) ?(<button type="button" className="normal" disabled={false} onClick={() => handleSwap()}>
                   Swap
                 </button>
-
-                {/* THIS IS THE FIRST STEP, WHERE YOU MUST FIGURE OUT HOW TO MAKE THIS BUTTON WORK
-                  SO THAT MEANS THAT YOU NEED TO 
-                  1. FIGURE OUT THE FORMULA FOR THE CURRENCY SWAPPING
-                  2. FIGURE OUT HOW TO MAKE THE BUTTON FUNCTIONAL 
-                  3. IF ENTERED > BALANCE ==> SWAP BUTTON SHOULD BE DISABLED*/}
+              ):(
+                <button type="button" className="normal" disabled={true} onClick={() => { console.log("wow") }}>
+                  Swap
+                </button>
+              )}
 
               </div>
 
